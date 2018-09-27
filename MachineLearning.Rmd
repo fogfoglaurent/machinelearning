@@ -959,4 +959,52 @@ grille[which(grille$VARIABLE!="" & grille$VARIABLE!="Cible"),
 
 ```
 
-#test
+##Affinement du modele ridge
+
+```{r}
+#Enlever les variables avec un poids faible
+
+credit2$Nb_pers_charge=NULL
+credit2$Anciennete_domicile=NULL
+credit2$Telephone=NULL
+credit2$Type_emploi=NULL
+credit2$Nb_credits=NULL
+train=credit2[id,]
+valid=credit2[-id,]
+x=model.matrix(~.-1,data=train[,!(names(train) %in% c("Cible","Cle","logit"))])
+y=train[,"Cible"]
+set.seed(235)
+cvfit=cv.glmnet(x,y,alpha=0,family="binomial",type="auc",nlambda=100)
+fit=glmnet(x,y,alpha=0,family = "binomial",lambda=seq(cvfit$lambda[1],
+                                                      cvfit$lambda[99],
+                                                      length=10000),
+           standardize = T)
+
+#Prediction sur une plage de lambda sur la base de test
+xt=model.matrix(~.-1,data=valid[,!(names(train) %in% c("Cible","Cle","logit"))])
+yt=valid[,"Cible"]
+ytpred=predict(fit,newx=xt,type="response")
+roc=function(x){
+  performance(prediction(ytpred[,x],yt),"auc")@y.values[[1]]
+}
+vauc=Vectorize(roc)(1:length(fit$lambda))
+vauc[which.max(vauc)]
+#Penalisation donnant la plus forte AUC
+fit$lambda[which.max(vauc)]
+
+log(vauc[which.max(vauc)])
+```
+
+```{r}
+#Representation graphique AUC en fonction du log lambda
+plot(vauc~log(fit$lambda),lty=2,cex=0.5,pch=16)
+abline(v=log(fit$lambda[which.max(vauc)]),col='black',lty=2)
+abline(h=vauc[which.max(vauc)],col='black',lty=3)
+```
+
+```{r}
+pred=prediction(ytpred[,which.max(vauc)],yt,label.ordering=c(0,1))
+perf=performance(pred,"tpr","fpr")
+max(attr(perf,'y.values')[[1]]-attr(perf,'x.values')[[1]])
+```
+
