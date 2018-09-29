@@ -1008,3 +1008,119 @@ perf=performance(pred,"tpr","fpr")
 max(attr(perf,'y.values')[[1]]-attr(perf,'x.values')[[1]])
 ```
 
+#Regression logistique penalisee lasso
+
+```{r}
+set.seed(235)
+cvfit=cv.glmnet(x,y,alpha=1,family="binomial",type="auc",nlambda=100)
+cvfit$lambda[1]
+length(cvfit$lambda)
+
+#Aire ROC
+cvfit$cvm[which(cvfit$lambda==cvfit$lambda.min)]
+
+#Test sur l'echantillon de test
+fit=glmnet(x,y,alpha=1,family="binomial",
+           lambda=seq(cvfit$lambda[1],cvfit$lambda[length(cvfit$lambda)],
+                      length=10000),standardize=T)
+plot(fit,xvar="lambda",label=T)
+coef(fit,s=log(cvfit$lambda[length(cvfit$lambda)]))
+
+ytpred=predict(fit,newx=xt,type="response")
+roc=function(x){
+  performance(prediction(ytpred[,x],yt),"auc")@y.values[[1]]
+}
+vauc=Vectorize(roc)(1:length(fit$lambda))
+vauc[which.max(vauc)]
+
+fit$lambda[which.max(vauc)]
+```
+
+```{r}
+#Resultat graphique de l'analyse AUC
+plot(vauc~log(fit$lambda),lty=2,cex=0.5,pch=16)
+abline(v=log(fit$lambda[which.max(vauc)]),col='black',lty=2)
+abline(h=vauc[which.max(vauc)],col='black',lty=3)
+
+plot(fit,xvar="lambda",label=T)
+abline(v=log(fit$lambda[which.max(vauc)]),col='black',lty=2)
+
+pred=prediction(ytpred[,which.max(vauc)],yt,label.ordering=c(0,1))
+perf=performance(pred,"tpr","fpr")
+max(attr(perf,'y.values')[[1]]-attr(perf,'x.values')[[1]])
+
+#Coefficients du modele correspondant
+coef(fit,s=fit$lambda[which.max(vauc)])
+```
+
+```{r}
+#Recherche de solutions plus parcimonieuses
+coef=as.matrix(coef(fit))
+coefnul=function(x){sum(coef[,x]!=0)-1}
+coefn0=Vectorize(coefnul)(1:length(fit$lambda))
+lasso=cbind(coefn0,vauc)
+head(lasso)
+tail(lasso)
+
+#AUC maximale pour chaque nombre de variables
+aggregate(lasso[,"vauc"],by=list(lasso[,"coefn0"]),max)
+```
+
+##Non-consistance de l'estimateur lasso
+
+```{r}
+x=model.matrix(~.,data=train[,!(names(train) %in% c("Cle","logit","Cible"))])
+y=train[,"Cible"]
+xt=model.matrix(~.,data=valid[,!(names(train) %in% c("Cle","logit","Cible"))])
+yt=valid[,"Cible"]
+
+#OLS et calcul de l'inverse des coefficients
+beta.ols=lm(y~x,data=train)$coefficients[-1]
+penal=pmax(1,abs(beta.ols^(-1)),na.rm=TRUE)
+
+fit=glmnet(x,y,alpha=1,family="binomial",
+           lambda=seq(cvfit$lambda[1],cvfit$lambda[length(cvfit$lambda)],
+                      length=10000),standardize = T,penalty.factor = penal)
+ytpred=predict(fit,newx=xt,type="response")
+toc=function(x){
+  performance(prediction(ytpred[,x],yt),"auc")@y.values[[1]]
+}
+vauc=Vectorize(roc)(1:length(fit$lambda))
+vauc[which.max(vauc)]
+
+coef(fit,s=fit$lambda[which.max(vauc)])
+```
+
+##Group-lasso
+
+```{r}
+library(grplasso)
+library(magrittr)
+0.002853051*length(id)
+
+#Coefficient minimum annukant tous les coefficients
+aggregate(fit$lambda,by=list(lasso[,"coefn0"]),min)[1,2]*length(id)
+lambda=seq(100,1,length=1000)
+credit3=credit2 %>% 
+  dplyr::select(-Cle,-logit)
+credit3$Cible=as.numeric(credit2$Cible)-1
+gplasso=grplasso(Cible~.,data=credit3,lambda=lambda,model=LogReg())
+
+coe=coefficients(gplasso)
+modannul=function(i){sort(rownames(coe)[(coe[,i]!=0)])}
+for (j in (length(lambda)-1):1)
+{
+  if (length(modannul(j))<length(modannul(j+1)))
+  {
+    cat("\n",j,modannul(j+1)[-match(modannul(j),modannul(j+1))])
+  }
+}
+```
+
+```{r}
+#Representation graphique de l'evolution des coefficients
+plot(gplasso)
+abline(v=lambda[71],lty=3)
+lambda[71]
+```
+
