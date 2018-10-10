@@ -12,9 +12,9 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r}
 myVariableNames=c("Comptes","Duree_credit","Historique_credit","Objet_credit","Montant_credit","Epargne","Anciennete_emploi","Taux_effort","Situation_familiale","Garanties","Anciennete_domicile","Biens","Age","Autres_credits","Statut_domicile","Nb_credits","Type_emploi","Nb_pers_charge","Telephone","Etranger","Cible")
 # 
-# credit=read.table("http://archive.ics.uci.edu/ml/machine-learning-databases/statlog/german/german.data",h=FALSE,col.names=myVariableNames)
+credit=read.table("http://archive.ics.uci.edu/ml/machine-learning-databases/statlog/german/german.data",h=FALSE,col.names=myVariableNames)
 
-credit=read.table("http://blogperso.univ-rennes1.fr/stephane.tuffery/public/german.txt",h=FALSE,col.names=myVariableNames)
+#credit=read.table("http://blogperso.univ-rennes1.fr/stephane.tuffery/publ#ic/german.txt",h=FALSE,col.names=myVariableNames)
 
 #OId des observations
 credit$Cle=seq(1,nrow(credit))
@@ -32,7 +32,7 @@ varquali=c("Comptes","Epargne","Historique_credit","Objet_credit","Situation_fam
 
 for (v in varquali) {credit[[v]]=factor(credit[[v]])}
 
-varquali=c("Duree_credit","Montant_credit","Taux_effort","Anciennete_domicile","Age","Nb_credits")
+varquanti=c("Duree_credit","Montant_credit","Taux_effort","Anciennete_domicile","Age","Nb_credits")
 
 vars=-grep('Cle',names(credit))
 ```
@@ -1122,5 +1122,162 @@ for (j in (length(lambda)-1):1)
 plot(gplasso)
 abline(v=lambda[71],lty=3)
 lambda[71]
+```
+
+#Penalisation elastic net
+
+```{r}
+elastic=function(a){
+  set.seed(235)
+  cvfit=cv.glmnet(x,y,alpha=a,family="binomial",type="auc",
+                  nlambda=100)
+  #Calcul de la regression pour une plage de valeurs de lambda
+  fit=glmnet(x,y,alpha=a,family="binomial",lambda=seq(cvfit$lambda[1],
+                                                      cvfit$lambda[length(cvfit$lambda)],
+                                                      length=10000),standardize = T)
+  #prediction sur une plagede lambda sur la base de test
+  ytpred=predict(fit,newx=xt,type="response")
+  roc=function(x){
+    performance(prediction(ytpred[,x],yt),"auc")@y.values[[1]]
+  }
+  vauc=Vectorize(roc)(1:length(fit$lambda))
+  return(vauc[which.max(vauc)])
+}
+time=proc.time()
+for (i in seq(0,1,by=0.1)){
+  cat("\n value=",i," --- AUC:",elastic(i),"\n")
+}
+proc.time()-time
+
+```
+
+#Regression PLS
+
+```{r}
+library(plsRglm)
+x=model.matrix(~.-1,data=train[,!(names(train) %in% c("Cle","logit","Cible"))])
+y=as.numeric(train[,"Cible"])
+#recodage en 0/1
+y[y==1]=0
+y[y==2]=1
+
+#Echantillon test
+xt=model.matrix(~.-1,data=valid[,!(names(valid) %in% c("Cle","logit","Cible"))])
+yt=as.numeric(valid[,"Cible"])
+
+#recodage en 0/1
+yt[yt==1]=0
+yt[yt==2]=1
+
+```
+
+```{r}
+#Regression
+pls1=plsRglm(y,x,nt=1,dataPredictY=xt,modele="pls-glm-logistic")
+
+pred=prediction(pls1$ValsPredictY,valid$Cible,label.ordering=c(0,1))
+performance(pred,"auc")@y.values[[1]]
+
+pls1$InfCrit
+
+pls1$Std.Coeffs
+
+pls1$Coeffs
+```
+
+```{r}
+#Test des modeles avec plus de composantes
+
+pls=plsRglm(y,x,nt=2,dataPredictY=xt,modele="pls-glm-logistic")
+pred=prediction(pls$ValsPredictY,valid$Cible,label.ordering=c(0,1))
+performance(pred,"auc")@y.values[[1]]
+
+pls=plsRglm(y,x,nt=3,dataPredictY=xt,modele="pls-glm-logistic")
+pred=prediction(pls$ValsPredictY,valid$Cible,label.ordering=c(0,1))
+performance(pred,"auc")@y.values[[1]]
+
+pls=plsRglm(y,x,nt=4,dataPredictY=xt,modele="pls-glm-logistic")
+pred=prediction(pls$ValsPredictY,valid$Cible,label.ordering=c(0,1))
+performance(pred,"auc")@y.values[[1]]
+
+pls=plsRglm(y,x,nt=10,dataPredictY=xt,modele="pls-glm-logistic")
+pls$InfCrit
+```
+
+##Incoherence de signes
+
+```{r}
+pls2=plsRglm(y,x,nt=2,dataPredictY = xt,modele="pls-glm-logistic")
+rownames(pls1$Coeffs)[which(pls1$Coeffs*pls2$Coeffs<0)]
+pls1$Coeffs[which(pls1$Coeffs*pls2$Coeffs<0)]
+pls2$Coeffs[which(pls1$Coeffs*pls2$Coeffs<0)]
+
+prop.table(table(train$Objet_credit,train$Cible),1)
+cor(x,y)*pls1$Coeffs[-1]
+```
+
+##Estimateurs bootstrap
+```{r}
+pls1$family
+bootpls1=bootpls(pls1,R=1000)
+```
+
+```{r}
+#Representation graphique
+boxplots.bootpls(bootpls1,prednames=FALSE)
+
+plots.confints.bootpls(confints.bootpls(bootpls1,typeBCa=F))
+
+```
+
+#Arbre de decision CART
+
+```{r}
+#Example
+library(tree)
+arbre=tree(Cible~Age+Duree_credit,data=credit)
+partition.tree(arbre)
+arbre
+```
+
+```{r}
+library(rpart)
+set.seed(235)
+cart=rpart(Cible~.,data=credit[id,vars],
+           method="class",parms=list(split="gini"),cp=0)
+cart=rpart(Cible~.,data=credit[id,c(varquali,varquanti,"Cible")],method="class",
+           parms=list(split="gini"),control=list(minbucket=30,minsplit=30*2,maxdepth=4))
+cart
+summary(cart)
+```
+
+```{r}
+#Graph
+plot(cart,branch=.2,uniform=T,compress=T,margin=.1)
+text(cart,fancy=T,use.n=T,pretty=0,all=T,cex=.6)
+```
+
+##Elagage
+
+```{r}
+cart=rpart(Cible~.,data=credit[id,vars],
+           method="class",parms=list(split="gini"),cp=0)
+printcp(cart)
+
+sum(predict(cart,type="class")!=credit[id,"Cible"])/nrow(credit[id,])
+plotcp(cart)
+
+summary(cart)
+```
+
+```{r}
+#Pruned cart tree
+prunedcart4f=prune(cart,cp=0.031250000)
+plot(prunedcart4f,branch=.2,uniform=T,compress=T,margin=.1)
+text(prunedcart4f,fancy=T,use.n=T,pretty=0,all=T,cex=.5)
+
+#Pruned tree with rattle package
+library(rattle)
+fancyRpartPlot(prunedcart4f,sub=" ",palettes=c("Greys"))
 ```
 
