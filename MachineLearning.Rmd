@@ -1346,3 +1346,1083 @@ legend("bottomright",c('5 feuilles','7feuilles'),
        col=c('black','red'),lty=c(1,2),lwd=3)
 ```
 
+#Algorithme PRIM
+
+##En deux dimensions
+```{r}
+x=credit[,c("Duree_credit","Age")]
+y=as.numeric(credit[,"Cible"])
+y[y==1]=0
+y[y==2]=1
+
+library(prim)
+prim=prim.box(x,y,peel.alpha=0.5,paste.alpha=0.01,mass.min=0.05,
+              pasting=T,verbose=T,threshold.type=1,threshold=0.3)
+
+summary(prim,print.box=T)
+
+plot(prim,col="transparent")
+points(x[y==0,],pch=1)
+points(x[y==1,],pch=17)
+```
+
+##PRIM sur les variables qualitatives
+
+```{r}
+x=credit[,varquanti]
+prim=prim.box(x,y,peel.alpha = 0.05,paste.alpha = 0.01,mass.min = 0.05,
+              pasting=T,verbose=T,threshold.type = 1,threshold = 0.3)
+```
+
+```{r}
+summary(prim,print.box=T)
+```
+
+```{r}
+#Taux alpha plus important
+prim=prim.box(x,y,peel.alpha = 0.5,paste.alpha = 0.01,mass.min = 0.05,
+              pasting=T,verbose=T,threshold.type = 1,threshold = 0.3)
+summary(prim,boxplot=T)
+```
+
+##PRIM sur les variables quantitatives et qualitatives
+
+```{r}
+varquanti2=names(credit)[names(credit) %in% varquanti]
+varquali2=names(credit2) %in% varquali
+formule=as.formula(paste("y= ~ 0 +",#0 est mis pour ne pas tenir compte de la constante
+                         paste(names(credit2[,varquali2]),collapse="+")))
+x=cbind(credit[,varquanti2],data.frame(model.matrix(formule,data=credit2)))
+
+prim=prim.box(x,y,peel.alpha = 0.5,paste.alpha = 0.01,mass.min = 0.05,
+              pasting=T,verbose=T,threshold.type = 1,threshold = 0.3)
+summary(prim,print.box=T)
+```
+
+```{r}
+#Aire ROC
+x=cbind(credit[id,varquanti2],
+        data.frame(model.matrix(formule,data=credit2[id,])))
+y=as.numeric(credit[id,"Cible"])
+xt=cbind(credit[-id,varquanti2],
+        data.frame(model.matrix(formule,data=credit2[-id,])))
+yt=as.numeric(credit[-id,"Cible"])
+library(pROC)
+auc(y,prim.which.box(x,prim))
+auc(yt,prim.which.box(xt,prim))
+
+#Fonction testant differentes valeurs d'alpha
+aucprim=matrix(NA,10,4)
+j=1
+for (n in seq(0.05,0.5,by=0.05)){
+  prim=prim.box(x,y,peel.alpha=n,paste.alpha=0.01,mass.min=0.05,
+                pasting=T,verbose=F,threshold.type=1,threshold=0.3)
+  aucprim[j,1]=n
+  aucprim[j,2]=prim$num.class
+  aucprim[j,3]=auc(y,prim.which.box(x,prim))
+  aucprim[j,4]=auc(yt,prim.which.box(xt,prim))
+  j=j+1
+}
+colnames(aucprim)=c("alpha","nb boites","AUC train","AUC test")
+aucprim
+```
+
+##PRIM sur les coordonnees factorielles des variables explicatives
+
+```{r}
+library(FactoMineR)
+#Formattage des donnees
+credit2$Taux_effort=NULL
+credit2$Anciennete_emploi=NULL
+credit2$Nb_credits=NULL
+Montant_credit=cut(credit$Montant_credit,c(0,4000,Inf))
+credit2$Montant_credit=Montant_credit
+
+ACM=MCA(credit2[,1:13],ncp=32,axes=c(1,2),graph=TRUE,quali.sup=13)
+ACM$eig
+
+```
+
+```{r}
+barplot(ACM$eig[,2],names=paste("Dim",1:nrow(ACM$eig)))
+
+plot(ACM,choix="ind",invisible="ind",xlim=c(-1,2),
+     autoLab="yes",cex=0.7)
+
+plotellipses(ACM,means=T,level=0.95,keepvar="Cible",label='quali')
+```
+}
+#Creation des donnees d'apprentissage
+##Training data
+x=ACM$ind$coord[id,1:32]
+y=as.numeric(credit[id,"Cible"])
+y[y==1]=0
+y[y==2]=1
+
+##Test data
+xt=ACM$ind$coord[-id,1:32]
+yt=as.numeric(credit[-id,"Cible"])
+yt[yt==1]=0
+yt[yt==2]=1
+
+##Fonction d'estimation du modele PRIM et calcul de AUC
+library(prim)
+library(pROC)
+f=function(i,j){
+  prim=prim.box(x,y,peel.alpha = i,paste.alpha = j,
+                mass.min=0.05,pasting=T,verbose=F,threshold.type = 1,
+                threshold=0.3)
+  auc(yt,prim.which.box(xt,prim))
+}
+
+for (n in seq(2,12,by=1)){
+  i=seq(0.05,0.5,by=0.05)
+  j=seq(0.01,0.1,by=0.01)
+  x=ACM$ind$coord[id,1:n]
+  xt=ACM$ind$coord[-id,1:n]
+  k=outer(i,j,Vectorize(f))
+  alpha1=i[which(k==max(k),arr.ind = TRUE)[1,1]]
+  alpha2=j[which(k==max(k),arr.ind = TRUE)[1,2]]
+cat("\n","nb facteurs=",n ," AUC test max=",max(k)," alpha peel =",alpha1,"alpha paste = ",
+    alpha2)
+}
+```
+
+```{r}
+
+```{r
+```
+
+#Forets aleatoires
+
+```{r}
+#Exemple basique
+library(randomForest)
+set.seed(235)
+var2=c(varquali,varquanti)
+var3=c(varquali,varquanti,"Cible")
+rf=randomForest(Cible~.,data=credit[id,var3],importance=TRUE,ntree=500,
+                mtry=3,replace=T,keep.forest=T,
+                nodesize=5,ytest=credit[-id,"Cible"],xtest=credit[-id,var2])
+rf
+```
+
+```{r}
+#Changement du cut-off
+rf=randomForest(Cible~.,data=credit[id,var3],importance=TRUE,ntree=500,
+                mtry=3,replace=T,keep.forest=T,
+                nodesize=5,ytest=credit[-id,"Cible"],xtest=credit[-id,var2],
+                cutoff=c(0.5,0.25),proximity=TRUE)
+rf
+##Number of times as OOB
+head(rf$oob.times)
+
+##Resultat des votes OOB
+head(rf$votes)
+
+rf$pred=ifelse(rf$votes[,2]>=0.5,1,0)
+table(rf$pred)
+
+err_oob=sum(rf$pred!=credit[id,]$Cible)/nrow(credit[id,])
+
+err_oob
+```
+
+```{r}
+#Representation graphique de l'erreur
+plot(rf$err.rate[,1],type='l',ylim=c(.2,.4),xlab="nombre d'iterations",
+     ylab='erreur')
+lines(rf$test$err.rate[,1],type='l',lwd=2,col='red')
+
+#Nombre d'iterations pour lequel le minimum d'erreur est atteint
+min.err=min(rf$err.rate[,"OOB"])
+min.err.idx=which(rf$err.rate[,"OOB"]==min.err)
+min.err.idx
+```
+
+```{r}
+test=predict(rf,credit[-id,var2],type='prob')[,2]
+pred=prediction(test,credit[-id,"Cible"],label.ordering = c(0,1))
+performance(pred,"auc")@y.values[[1]]
+
+trainrf=predict(rf,credit[id,],type='response')
+err_train=sum(trainrf!=credit[id,"Cible"])/nrow(credit[id,])
+err_train
+```
+
+```{r}
+#Erreur .632+
+p=table(credit[id,"Cible"])[2]/nrow(credit[id,])
+q=table(trainrf)[2]/nrow(credit[id,])
+gamma=p*(1-q)+(1-p)*q
+
+txoverfit=(err_oob-err_train)/(gamma-err_train)
+txoverfit
+w=0.632/(1-0.368*txoverfit)
+(1-w)*err_train+w*err_oob
+```
+
+##Graphique de proximite
+```{r}
+library(randomForest)
+MDSplot(rf,credit[id,vars]$Cible,pch=as.numeric(credit[id,vars]$Cible))
+```
+
+##Mesure de l'importance des variables
+
+```{r}
+#Mean Decrease accuracy
+importance(rf,type=1)[order(importance(rf,type=1),decreasing=TRUE),]
+
+#Mean Decrease Gini
+importance(rf,type=2)
+
+varImpPlot(rf)
+```
+
+```{r}
+#Autre representation graphique
+rf.imp=importance(rf,type=1)[order(importance(rf,type=1),decreasing=TRUE),]
+par(mar=c(8,4,4,0))
+barplot(rf.imp,col=gray(0:nrow(rf$importance)/nrow(rf$importance)),
+        ylab='Importance',ylim=c(0,30),
+        cex.names=0.8,las=3)
+```
+
+```{r,fig.width=6}
+#Calcul de l'importance moyenne
+nvar=ncol(credit[,vars])-1
+vimp=rep(0,nvar)
+nsimul=30
+for (i in 1:nsimul){
+  rf=randomForest(Cible~.,data=credit[id,vars],
+                  importance=TRUE,ntree=500,mtry=3,replace=T,
+                  keep.forest=T,nodesize=5)
+  vip=importance(rf,type=1)
+  vimp=vimp+vip[order(rownames(vip))]/nsimul
+  rm(rf)
+}
+a1=sort(rownames(vip))
+a2=order(vimp,decreasing=TRUE)
+par(mar=c(8,4,4,0))
+barplot(vimp[a2],col=gray(0:nvar/nvar),names.arg=a1[a2],
+        ylab='Importance',ylim=c(0,30),cex.names=0.8,las=3)
+title(main=list("randomForest : Importance moyenne des variables",
+                font=1,cex=1.2))
+```
+
+##Choix du nombre de variables
+
+```{r}
+mtry=tuneRF(credit[id,-which(names(credit) %in% c('Cible','Cle'))],credit[id,which(names(credit) %in% c('Cible'))],
+            mtryStart=1,ntreeTry=500,stepFactor=2,improve=0.001)
+```
+
+```{r}
+#Choix de maniere manuelle
+set.seed(235)
+nsimul=100
+nvarmin=1
+nvarmax=6
+auc=matrix(NA,nvarmax-nvarmin+1,2)
+for (nvar in nvarmin:nvarmax){
+  auc[nvar-nvarmin+1,1]=nvar
+  rft=matrix(NA,nrow(credit[-id,var2]),nsimul+1)
+  for(i in 1:nsimul){
+    rf=randomForest(Cible~.,data=credit[id,var3],
+                    importance=F,ntree=500,mtry=nvar,replace=T,
+                    keep.forest=T,nodesize=5)
+    rft[,i]=predict(rf,credit[-id,var2],type='prob')[,2]
+  }
+  rft[,nsimul+1]=apply(rft[,1:nsimul],1,mean)
+  pred=prediction(rft[,nsimul+1],credit[-id,"Cible"],
+                  label.ordering=c(0,1))
+  auc[nvar-nvarmin+1,2]=performance(pred,"auc")@y.values[[1]]
+}
+colnames(auc)=c("nb variables","AUC test")
+
+```
+
+##RandomForest sans tirage aleatoire des observations
+```{r}
+set.seed(235)
+rf=randomForest(Cible~.,data=credit[id,var3],
+                    importance=TRUE,ntree=500,mtry=2,replace=F,
+                    sampsize=length(id),keep.forest=T,nodesize=5,
+                ytest=credit[-id,"Cible"],xtest=credit[-id,var2])
+rf_test=predict(rf,credit[-id,var2],type="prob")[,2]
+pred=prediction(rf_test,credit[-id,"Cible"],label.ordering = c(0,1))
+performance(pred,"auc")@y.values[[1]]
+```
+
+##Extra-Trees
+
+```{r}
+library(extraTrees)
+x=model.matrix(~.-1,data=credit[id,!names(credit) %in% c("Cible","Cle")])
+y=credit[id,"Cible"]
+xt=model.matrix(~.-1,data=credit[-id,!names(credit) %in% c("Cible","Cle")])
+et=extraTrees(x,y,ntree=500,mtry=1,numRandomCuts=1,nodesize=5,numThreads=6)
+et
+pred.et=predict(et,xt,probability = T)[,2]
+pred=prediction(pred.et,credit[-id,"Cible"],label.ordering=c(0,1))
+performance(pred,"auc")@y.values[[1]]
+```
+
+```{r}
+#Benchmarking
+library(microbenchmark)
+microbenchmark(extraTrees(x,y,ntree=500,mtry=5,numRandomCuts=1,nodesize=5,numThreads = 1),
+               times=30)
+microbenchmark(extraTrees(x,y,ntree=500,mtry=5,numRandomCuts=1,nodesize=5,numThreads = 6),
+               times=30)
+```
+
+
+#Le bagging
+```{r}
+library(rpart)
+library(ipred)
+set.seed(235)
+bag1=bagging(Cible~.,data=credit[id,!names(credit) %in% c("Cle")],nbagg=200,
+             coob=TRUE,control=rpart.control(minbucket=5))
+bag1
+
+#Moyenne des probabilites votant 0 ou 1
+test_bag1=predict(bag1,credit[-id,!names(credit) %in% c("Cible","Cle")],type="prob",
+                              aggregation="average")
+
+head(test_bag1)
+
+pred=prediction(test_bag1[,2],credit[-id,"Cible"],label.ordering = c(0,1))
+performance(pred,"auc")@y.values[[1]]
+
+#Proportion des arbres votant 0 ou 1
+test_bag1=predict(bag1,credit[-id,!names(credit) %in% c("Cible","Cle")],type="prob",
+                              aggregation="majority")
+head(test_bag1)
+pred=prediction(test_bag1[,2],credit[-id,"Cible"],label.ordering = c(0,1))
+performance(pred,"auc")@y.values[[1]]
+```
+
+```{r}
+#Test sur les arbres stumps (maxdepth=1, cp=-1)
+set.seed(235)
+stump=bagging(Cible~.,data=credit[id,!names(credit) %in% c("Cle")],nbagg=200,
+             coob=TRUE,control=rpart.control(maxdepth=1,cp=-1))
+test_stump=predict(stump,credit[-id,!names(credit) %in% c("Cible","Cle")],
+                   type="prob",aggregation="average")
+pred=prediction(test_stump[,2],credit[-id,"Cible"],label.ordering = c(0,1))
+performance(pred,"auc")@y.values[[1]]
+
+test_stump=predict(stump,credit[-id,!names(credit) %in% c("Cible","Cle")],
+                   type="prob",aggregation="majority")
+pred=prediction(test_stump[,2],credit[-id,"Cible"],label.ordering = c(0,1))
+performance(pred,"auc")@y.values[[1]]
+```
+
+```{r}
+#Mauvais example stump avec bagging
+
+##Arbre de regression CART
+cart=rpart(Cible~Anciennete_domicile+Telephone+Nb_pers_charge,data=credit[id,!names(credit) %in% c("Cle")],method="class",parms=list(split="gini"),cp=-1,maxdepth=1)
+cart
+predc=predict(cart,type="prob",credit[-id,!names(credit) %in% c("Cible","Cle")])[,2]
+pred=prediction(predc,credit[-id,"Cible"],label.ordering=c(0,1))
+performance(pred,"auc")@y.values[[1]]
+
+##Bagging
+set.seed(235)
+bag1=bagging(Cible~Anciennete_domicile+Telephone+Nb_pers_charge,
+             data=credit[id,!names(credit) %in% c("Cle")],
+             nbagg=200,coob=TRUE,control=rpart.control(maxdepth=1,cp=-1))
+predc=predict(bag1,credit[-id,!names(credit) %in% c("Cible","Cle")],type="prob",
+              aggregation="average")
+pred=prediction(predc[,2],credit[-id,"Cible"],label.ordering=c(0,1))
+performance(pred,"auc")@y.values[[1]]
+```
+
+#Forets aleatoires de modeles logistiques
+
+```{r}
+#Fonction pour realiser les forets aleatoires
+RForestLog=function(apprent,validat,varY,varX,nb_var,
+                    crit="bic",nsimul){
+  nobs=nrow(apprent)
+  
+  #ajustement d'un modele sature pour obtenir l'ensemble des modalites dont nous
+  #stockerons les coefficients
+  y=apprent[,varY]
+  formule=as.formula(paste("y ~",paste(names(apprent[,varX]),collapse="+")))
+  sature=glm(formule,data=apprent[,c(varX,varY)],family=binomial(link="logit"))
+  coef=matrix(0,length(coef(sature)),nsimul+2)
+  rownames(coef)=names(coef(sature))
+  
+  #matrice contenant les predictions de chaque modele sur l'echantillon test
+  predic=matrix(NA,nrow(validat),nsimul)
+  #vecteur contenant les AUC de chaque modele
+  auc=matrix(0,nsimul,1)
+  
+  for (i in (1:nsimul)) #boucle sur le nb d'iterations
+  {
+    #tirage aleatoire simple des variables
+    size=length(varX) #nb de variables explicatives
+    s=sort(sample(size,nb_var,replace=F))
+    predicteurs=varX[s]
+    
+    #tirage aleatoire equiprobable avec remise des individus dans
+    #l'echantilllon d'apprentissage
+    s=sample(nobs,nobs,replace=T)
+    
+    #ecriture d'une formule avec l'ensemble des predicteurs selectionnes aleatoirement
+    if (nb_var>1){
+      formule=as.formula(paste("y ~",paste(names(apprent[,predicteurs]),collapse="+")))
+    } else {
+      formule=as.formula(paste("y ~",predicteurs))
+    }
+    cible=apprent[s,varY]
+    #modele minumum
+    logit=glm(cible~1,data=apprent[s,],family=binomial(link="logit"))
+    
+    #Selection pas a pas sur la base du critere BIC ou AIC
+    if (crit=="bic"){
+      selection=step(logit,direction="forward",trace=F,
+                     k=log(nobs),scope=list(upper=formule))
+    } else {
+      selection=step(logit,direction ="forward",trace=F,
+                     k=2,scope=list(upper=formule))
+    }
+    
+    #application du modele logit ajuste a l'echantillon de test
+    predic[,i]=predict(selection,newdata=validat,type="response")
+    
+    #moyenne des predictions des i premiers modeles agreges
+    if (i==1){
+      moypred=predic[,i]
+    } else {
+      moypred=apply(predic[,1:i],1,mean)
+    }
+    #calcul de l'AUC des i premiers modeles agreges
+    cible=validat[,varY]
+    pred=prediction(moypred,cible,label.ordering=c(0,1))
+    auc[i]=performance(pred,"auc")@y.values[[1]]
+    
+    #stockage des coefficients non nuls
+    index=match(names(coef(selection)),names(coef(sature)))
+    coef[index,i]=coef(selection)
+  } #Fin de la boucle
+  
+  #coefficients moyens des modeles agreges
+  coef[,nsimul+1]=apply(coef[,1:nsimul],1,mean)
+  #nb coefficients non nuls par modalite
+  coef[,nsimul+2]=apply((coef[,1:nsimul]!=0),1,sum)
+  
+  #resultats en retour de la fonction
+  rf=list(auc,coef)
+  
+                    } #fin de la fonction
+```
+
+```{r}
+#Application de la fonction RForestLog
+library(car)
+credit2$Objet_credit=recode(credit$Objet_credit,"'A40'='Voiture neuve';
+                            'A41'='Voiture occasion';
+                            c('A42','A44','A45')='Intérieur';
+                            'A43'='Vidéo - HIFI';c('A46','A48','A410')='Etudes';
+                            'A47'='Vacances';'A49'='Business'; else='Autres'")
+
+niter=300
+varx=c(varquali,varquanti)
+index=match(names(credit2[id,]),varx)
+varx2=varx[na.omit(index)]
+rf=RForestLog(apprent=credit2[id,],validat=credit2[-id,],varY="Cible",
+              varX=varx2,nb_var=4,crit="aic",nsimul=niter)
+
+#Plot AUC
+plot(rf[[1]])
+rf[[2]][,niter+1]
+rf[[2]][,niter+2]
+```
+
+```{r}
+#Ensemble
+Ensemble=function(apprent,validat,varY,varX,nb_var,crit="bic",nsimul,nb){
+  y=apprent[,varY]
+  formule=as.formula(paste("y~ ",paste(names(apprent[,varX]),collapse="+")))
+  sature=glm(formule,data=apprent[,c(varX,varY)],
+             family=binomial(link="logit"))
+  coe=matrix(0,length(coef(sature)),nb+1)
+  rownames(coe)=names(coef(sature))
+  occ=matrix(0,length(coef(sature)),nb+1)
+  rownames(occ)=names(coef(sature))
+  auc=matrix(0,nsimul,nb+1)
+  
+  for (i in (1:nb)){
+    rf=RForestLog(apprent,validat,varY,varX,nb_var,crit,nsimul)
+    auc[,i]=rf[[1]]
+    coe[,i]=rf[[2]][,nsimul+1]
+    occ[,i]=rf[[2]][,nsimul+2]
+  }
+  
+  #moyenne des AUC
+  auc[,nb+1]=apply(auc[,1:nb],1,mean)
+  
+  #moyenne des coefficients
+  coe[,nb+1]=apply(coe[,1:nb],1,mean)
+  
+  #moyenne des nb d'occurrences
+  occ[,nb+1]=apply(occ[,1:nb],1,mean)
+  
+  #resultats en retour
+  ens=list(auc,coe)
+} #fin de la fonction
+```
+
+```{r}
+#Utilisation de la fonction
+niter=300
+n=30
+ens=Ensemble(apprent=credit2[id,],validat=credit2[-id,],varY="Cible",
+              varX=varx2,nb_var=3,crit="aic",nsimul=niter,nb=n)
+
+#Plot AUC
+plot(ens[[1]][,31])
+
+#Coefficients
+ens[[2]][,31]
+
+```
+
+#Le boosting
+
+```{r}
+library(ada)
+set.seed(235)
+boost=ada(Cible~.,data=credit[id,c(var2,"Cible")],type="discrete",
+          loss="exponential",control=rpart.control(cp=0),iter=5000,
+          nu=1,test.y=credit[-id,"Cible"],test.x=credit[-id,var3])
+summary(boost)
+```
+
+```{r}
+#Tracage du suivi de l'erreur en fonction des iterations
+plot(boost,kappa=F,test=T,tflag=F)
+```
+
+```{r}
+#Modele sur des stumps
+boost=ada(Cible~.,data=credit[id,c(var2,"Cible")],type="discrete",
+          loss="exponential",control=rpart.control(cp=-1,maxdepth=1,minsplit=0),iter=5000,
+          nu=1,test.y=credit[-id,"Cible"],test.x=credit[-id,var3])
+summary(boost)
+
+plot(boost,kappa=F,test=T)
+```
+
+```{r}
+#Ajout d'une penalisation
+boost=ada(Cible~.,data=credit[id,c(var2,"Cible")],type="discrete",
+          loss="exponential",control=rpart.control(cp=0),iter=5000,
+          nu=0.01,test.y=credit[-id,"Cible"],test.x=credit[-id,var3])
+boost
+summary(boost)
+```
+
+##Real AdaBoost
+
+```{r}
+#Real AdaBoost
+library(ada)
+boost=ada(Cible~.,data=credit[id,c(var2,"Cible")],type="real",
+          loss="exponential",control=rpart.control(cp=0),iter=5000,
+          nu=0.01,test.y=credit[-id,"Cible"],test.x=credit[-id,var3])
+boost
+summary(boost)
+```
+
+```{r}
+#Prediction
+nsimul=30
+auc=matrix(NA,nsimul+1,1)
+bst=matrix(NA,nrow(credit[-id,]),nsimul+1)
+for (i in 1:nsimul){
+  rm(boost)
+  boost=ada(Cible~.,data=credit[id,c(var2,"Cible")],type="real",
+            loss="exponential",control=rpart.control(cp=0),iter=2000,
+            nu=0.01,test.y=credit[-id,"Cible"],test.x=credit[-id,var3])
+  bst[,i]=predict(boost,credit[-id,var3],type="prob")[,2]
+  pred=prediction(bst[,i],credit[-id,"Cible"],label.ordering=c(0,1))
+  auc[i,1]=performance(pred,"auc")@y.values[[1]]
+} # Fin de boucle
+bst[,nsimul+1]=apply(bst[,1:nsimul],1,mean)
+pred=prediction(bst[,nsimul+1],credit[-id,"Cible"],label.ordering = c(0,1))
+auc[nsimul+1,1]=performance(pred,"auc")@y.values[[1]]
+auc
+```
+
+##Boosting de modeles logistiques
+
+```{r}
+#Recodage de la variable objet credit
+library(car)
+credit2$Objet_credit=recode(credit$Objet_credit,"'A40'='Voiture neuve';
+                            'A41'='Voiture occasion';
+                            c('A42','A44','A45')='Intérieur';
+                            'A43'='Vidéo - HIFI';c('A46','A48','A410')='Etudes';
+                            'A47'='Vacances';'A49'='Business'; else='Autres'")
+
+BoostLog=function(apprent,validat,varY,varX,crit="bic",shrink=1,nsimul){
+  nobs=nrow(apprent)
+  w=rep(1/nobs,nobs)
+  rep=0
+  y=apprent[,varY]
+  formule=as.formula(paste("y ~",paste(names(apprent[,varX]),collapse="+")))
+  sature=glm(formule,data=apprent[,c(varX,varY)],family=binomial(link="logit"))
+  coef=matrix(0,length(coef(sature)),nsimul+2)
+  rownames(coef)=names(coef(sature))
+  predic=matrix(NA,nrow(validat),nsimul)
+  auc=matrix(0,nsimul,1)
+  
+  for (i in (1:nsimul)){
+    #graine pour tirage aleatoire
+    set.seed(seed)
+    
+    #initialisation des poids
+    w=w/sum(w,na.rm=TRUE)
+    #prevoir le cas ou un poids w est si petit qu'il vaut NaN
+    
+    #variables explicatives
+    nb_var=length(varX)
+    predicteurs=varX
+    
+    #tirage aleatoire pondere avec remise de l'echantillon d'apprentissage
+    s=sample(nobs,nobs,replace=T,prob=w)
+    
+    #creation de la formule avec l'ensemble des predicteurs
+    if (nb_var>1){
+      formule=as.formula(paste("y~ ",paste(names(apprent[,predicteurs]),collapse="+")))
+    } else {
+      formule=as.formula("y ~",predicteurs)
+    }
+    cible=apprent[s,varY]
+    
+    #selection ascendante pas a pas
+    logit=glm(cible~1,data=apprent[s,],family=binomial(link="logit"))
+    if (crit=="bic"){
+      selection=step(logit,direction="forward",trace=F,k=log(nobs),scope=list(upper=formule))
+    } else {
+      selection=step(logit,direction="forward",trace=F,k=2,scope=list(upper=formule))
+    }
+  
+    #application du modele logit a l'echantillon d'apprentissage et MAJ des poids
+    pred=predict(selection,newdata=apprent,type="response")
+    alpha=log(pred/(1-pred))/2
+    signe=ifelse(apprent[,varY]==1,1,-1)
+    w=w*exp(-shrink*signe*alpha)
+    
+    #application du modele logit a l'echantillon de test
+    predic[,i]=predict(selection,newdata=validat,type="response")
+    rep=rep+predic[,i]
+    cible=validat[,varY]
+    pred=prediction(rep,cible,label.ordering=c(0,1))
+    auc[i]=performance(pred,"auc")@y.values[[1]]
+    
+    #stockage des coefficients
+    index=match(names(coef(selection)),names(coef(sature)))
+    coef[index,i]=coef(selection)
+  
+  }#fin de la boucle
+  
+  coef[,nsimul+1]=apply(coef[,1:nsimul],1,mean)
+  #moyenne des coefficients
+  coef[,nsimul+2]=apply((coef[,1:nsimul]!=0),1,sum)
+  
+  #nb de coefficients non nuls par modalite
+  
+  #resultats en retour
+  rep=rep/nsimul
+  rf=list(auc,coef,rep)
+}#fin de la fonction
+
+seed=235
+niter=5000
+varx=c(varquali,varquanti)
+index=match(names(credit2[id,]),varx)
+varx2=varx[na.omit(index)]
+bst=BoostLog(apprent=credit2[id,],validat=credit2[-id,],varY="Cible",
+             varX=varx2,crit="bic",shrink=0.1,nsimul=niter)
+```
+
+```{r}
+#Graphique de l'AUC
+plot(bst[[1]])
+
+max(bst[[1]])
+which.max(bst[[1]])
+
+bst[[2]][,niter+1]
+```
+
+#SVM
+
+##SVM a noyau lineaire
+
+```{r}
+library(e1071)
+svmlin=svm(Cible~.,data=credit[id,vars],kernel="linear",
+           probability=TRUE,cost=1)
+summary(svmlin)
+
+tail(svmlin$coefs)
+
+#taux de bien classes
+table(svmlin$fitted,credit[id,"Cible"])
+mean(svmlin$fitted!=credit[id,"Cible"])
+```
+
+```{r}
+#Cross validation
+svmlin=svm(Cible~.,data=credit[id,vars],kernel="linear",
+           probability=TRUE,cost=1,cross=10)
+summary(svmlin)
+
+#AUC
+pred=prediction(as.numeric(svmlin$fitted),credit[id,"Cible"],
+                label.ordering=c(0,1))
+performance(pred,"auc")@y.values[[1]]
+
+test_svmlin=predict(svmlin,credit[-id,vars],probability=TRUE)
+test_svmlin
+```
+
+```{r}
+mean(test_svmlin!=credit[-id,"Cible"])
+pred=prediction(attr(test_svmlin,"probabilities")[,2],credit[-id,"Cible"],
+                label.ordering=c(0,1))
+performance(pred,"auc")@y.values[[1]]
+
+#Tuning cost parameter
+set.seed(235)
+svmlin=tune.svm(Cible~.,data=credit[id,vars],
+                kernel="linear",cost=10^(-3:1))
+summary(svmlin)
+plot(svmlin)
+
+#Tuning sur l'echantillon test
+svmlin=tune.svm(Cible~.,data=credit[id,vars],kernel="linear",
+                cost=10^(-3:1),validation.x=credit[-id,!(vars %in% c("Cible"))],
+                validation.y=credit[-id,"Cible"],tunecontrol=tune.control(sampling="fix",
+                                                                          fix=1))
+summary(svmlin)
+```
+
+##Le calcul des coefficients des predicteurs
+
+```{r}
+x=model.matrix(~.-1,data=credit[id,1:19])
+y=credit[id,20]
+svmlin=svm(x,y,kernel="linear",probability=TRUE,cost=1,scale=T)
+w=t(svmlin$coefs) %*% scale(x[svmlin$index,],apply(x,2,mean),apply(x,2,sd))
+w
+
+xscaled=scale(x,apply(x,2,mean),apply(x,2,sd))
+p2=xscaled%*%t(w)-svmlin$rho
+
+w_initiaux=w/apply(x,2,sd)
+
+```
+
+##SVM à noyau radial gaussien (RFB)
+
+```{r}
+#Tuning
+library(e1071)
+svmrad=tune.svm(Cible~.,data=credit[id,vars],
+                kernel="radial",cost=seq(0.1,10,by=0.1),
+                gamma=c(0.001,0.01,0.1,1),validation=credit[-id,!(vars %in% c("Cible"))],
+                validation.y=credit[-id,"Cible"],tunecontrol=tune.control(sampling="fix",
+                                                                          fix=1))
+summary(svmrad)
+plot(svmrad)
+```
+
+```{r}
+#AUC pour des valeurs fixees de gamma et de cout
+svm=svm(Cible~.,data=credit[id,vars],kernel="radial",
+        gamma=0.08,cost=1.5,probability=TRUE)
+svmrad=predict(svm,credit[-id,!(vars %in% c("Cible"))],probability=TRUE)
+pred=prediction(attr(svmrad,"probabilities")[,2],credit[-id,"Cible"],
+                label.ordering=c(0,1))
+performance(pred,"auc")@y.values[[1]]
+```
+
+##SVM à noyau radial laplacien
+
+```{r}
+#Utilisation de kernlab qui dispose de plus de types de noyaux
+library(kernlab)
+ksvmlap=ksvm(Cible~.,data=credit[id,vars],kernel="laplacedot",
+             type="C-svc",prob.model=TRUE)
+ksvmlap
+
+#Prediction
+predklap=predict(ksvmlap,type="prob",credit[-id,!(vars %in% c("Cible"))])
+pred=prediction(predklap[,2],credit[-id,"Cible"],label.ordering=c(0,1))
+performance(pred,"auc")@y.values[[1]]
+```
+
+```{r}
+#Maximisation AUC en test (pas de fonction tune pour kernlab)
+maxauc=function(x){
+  ksvmlap=ksvm(Cible~.,data=credit[id,vars],kernel="laplacedot",
+               type="C-svc",C=x[1],prob.model=TRUE,kpar=list(sigma=x[2]))
+  predklap=predict(ksvmlap,type="prob",credit[-id,!(vars %in% c("Cible"))])
+  pred=prediction(predklap[,2],credit[-id,"Cible"],label.ordering = c(0,1))
+  -performance(pred,"auc")@y.values[[1]]
+}
+algo="Nelder-Mead"
+est=optim(c(1,0.05),maxauc,method=algo)
+est$convergence
+est$par
+est$value
+```
+
+##Definition manuelle d'un noyau
+
+```{r}
+k=function(x,y){
+  (sum(x*y)+1)*exp(0.001*sum((x-y)^2))
+}
+class(k)="kernel"
+ksvmuser=ksvm(Cible~.,data=credit[id,vars],kernel=k,
+              type="C-svc",C=1,prob.model=TRUE)
+ksvmuser
+
+predkuser=predict(ksvmuser,type="prob",credit[-id,!(vars %in% c("Cible"))])
+pred=prediction(predkuser[,2],credit[-id,"Cible"],label.ordering = c(0,1))
+performance(pred,"auc")@y.values[[1]]
+```
+
+##SVM à noyau sigmoide
+
+```{r}
+svmsig=tune.svm(Cible~.,data=credit[id,vars],
+                kernel="sigmoid",cost=seq(1,100,by=0.5),gamma=c(0.0001,
+                                                                0.0005,0.001,0.005,0.01,0.1,1),
+                validation=credit[-id,!(vars %in% c("Cible"))],
+                validation.y=credit[-id,"Cible"],tunecontrol=tune.control(sampling="fix",
+                                                                          fix=1))
+summary(svmsig)
+
+svm=svm(Cible~.,data=credit[id,vars],kernel="sigmoid",
+        gamma=0.01,cost=6.5,probability=TRUE)
+svmsig=predict(svm,credit[-id,!(vars %in% c("Cible"))],probability=TRUE)
+pred=prediction(attr(svmsig,"probabilities")[,2],credit[-id,"Cible"],
+label.ordering=c(0,1))
+performance(pred,"auc")@y.values[[1]]
+```
+
+##SVM à noyau polynomial
+
+```{r}
+#Noyau de degre 2
+svmpol=tune.svm(Cible~.,data=credit[id,vars],kernel="polynomial",
+                degree=2,gamma=seq(0.01,1,by=0.01),
+                cost=seq(0.1,10,by=0.1),validation.x=credit[-id,!(vars %in% c("Cible"))],
+                validation.y=credit[-id,"Cible"],tunecontrol=tune.control(sampling="fix",
+                                                                          fix=1))
+summary(svmpol)
+
+svmpol$best.model
+
+svm=svm(Cible~.,data=credit[id,vars],
+        kernel="polynomial",degree=2,gamma=0.03,cost=2.9,
+        probability=TRUE)
+svmpol2=predict(svm,type="prob",credit[-id,!(vars %in% c("Cible"))],
+                probability = TRUE)
+pred=prediction(attr(svmpol2,"probabilities")[,2],credit[-id,"Cible"],label.ordering = c(0,1))
+performance(pred,"auc")@y.values[[1]]
+```
+
+```{r}
+#Recherche du "meilleur" coef0
+library(e1071)
+svmpol=tune.svm(Cible~.,data=credit[id,vars],
+                kernel="polynomial",degree=2,gamma=seq(0.01,0.1,by=0.01),
+                cost=seq(0.1,10,by=0.1),coef0=seq(0,1,by=0.1),validation.x=credit[-id,!(vars %in% c("Cible"))],
+                validation.y=credit[-id,"Cible"],tunecontrol=tune.control(sampling="fix",fix=1))
+svmpol$best.model
+```
+
+##SVM apres reduction de dimension
+
+```{r}
+
+#Recodage credit 2
+myVariableNames=c("Comptes","Duree_credit","Historique_credit","Objet_credit","Montant_credit","Epargne","Anciennete_emploi","Taux_effort","Situation_familiale","Garanties","Anciennete_domicile","Biens","Age","Autres_credits","Statut_domicile","Nb_credits","Type_emploi","Nb_pers_charge","Telephone","Etranger","Cible")
+# 
+credit=read.table("http://archive.ics.uci.edu/ml/machine-learning-databases/statlog/german/german.data",h=FALSE,col.names=myVariableNames)
+
+#credit=read.table("http://blogperso.univ-rennes1.fr/stephane.tuffery/publ#ic/german.txt",h=FALSE,col.names=myVariableNames)
+
+#OId des observations
+credit$Cle=seq(1,nrow(credit))
+credit$Etranger=NULL
+
+credit2=credit
+
+library(car)
+credit2$Comptes=recode(credit2$Comptes,"'A14'='Pas de compte';
+                       'A11'='CC < 0 euros';'A12'='CC [0-200 euros[';
+                       'A13'='CC > 200 euros'")
+
+credit2$Historique_credit=recode(credit2$Historique_credit,
+                                 "'A30'='Impayes passes';
+                                 'A31'='Impaye en cours dans autre banque';c('A32','A33')='Pas de credits ou en cours sans retard';
+                                 'A34'='Credits passes sans retard'")
+
+credit2$Objet_credit=recode(credit2$Objet_credit,
+                            "'A40'='Voiture neuve';'A41'='Voiture occasion';c('A42','A44','A45')='Interieur';'A43'='Video - HIFI';
+                            c('A46','A48')='Etudes';
+                            'A47'='Vacances';'A49'='Business';
+                            else='Autres'")
+
+credit2$Epargne=recode(credit2$Epargne,"
+                       'A65'='Sans epargne';c('A61','A62')='< 500 euros';
+                       c('A63','A64')='> 500 euros'")
+
+credit2$Anciennete_emploi=recode(credit2$Anciennete_emploi,
+                                 "c('A71','A72')='Sans emploi ou < 1 an';
+                                 'A73'='entre 1 et 4 ans';
+                                 c('A74','A75')='depuis au moins 4 ans'")
+
+credit2$Situation_familiale=recode(credit2$Situation_familiale,
+                                   "'A91'='Homme divorce/separe';
+                                   'A92'='Femme divorcee/separee/mariee';
+                                   c('A93','A94')='Homme celibataire/marie/veuf';'A95'='Femme celibataire'")
+
+credit2$Garanties=recode(credit2$Garanties,
+                         "'A103'='Avec garant';
+                         else='Sans garant'")
+
+credit2$Biens=recode(credit2$Biens,
+                     "'A121'='Immobilier';
+                     'A124'='Aucun bien';else='Non immobilier'")
+
+credit2$Autres_credits=recode(credit2$Autres_credits,"'A143'='Aucun credit exterieur';
+                              else='Credit exterieurs'")
+
+credit2$Statut_domicile=recode(credit2$Statut_domicile,"'A152'='Proprietaire';
+                              else='Non proprietaire'")
+
+credit4=credit2
+credit4$Taux_effort=NULL
+credit4$Anciennete_domicile=NULL
+credit4$Nb_credits=NULL
+credit4$Nb_pers_charge=as.factor(ifelse(credit4$Nb_pers_charge==1,"NbP1","NbP2"))
+credit4$Cle=NULL
+credit4$Age=Age
+credit4$Duree_credit=Duree_credit
+credit4$Montant_credit=Montant_credit
+
+
+#ACM
+library(FactoMineR)
+ACM=MCA(credit4,ncp=32,axes=c(1,2),graph=TRUE,quali.sup=17)
+modal=apply(credit4[,-17],2,function(x) nlevels(as.factor(x)))
+#Calcul du nombre de dimensions et de la somme des valeurs propres
+sum(modal)-ncol(credit4[,-17])
+sum(ACM$eig[,1])
+sum(modal)/ncol(credit4[,-17])-1
+```
+
+```{r}
+#Noyau lineaire sur les deux premiers axes factoriels
+library(kernlab)
+naxes=2
+x=ACM$ind$coord[id,1:naxes]
+y=credit[id,"Cible"]
+ksvmlin=ksvm(x,y,type="C-svc",kernel="vanilladot",C=1,prob.model=TRUE)
+plot(ksvmlin,data=cbind(x,y))
+
+#Test
+xt=ACM$ind$coord[-id,1:naxes]
+yt=credit[-id,"Cible"]
+predksvm=predict(ksvmlin,type="prob",xt)
+pred=prediction(predksvm[,2],yt,label.ordering=c(1,2))
+performance(pred,"auc")@y.values[[1]]
+```
+
+```{r}
+#Fonction pour tester la valeur du cout
+library(e1071)
+f=function(i){
+  ksvm=svm(x,y,kernel="linear",cost=i,probability=TRUE)
+  predksvm=predict(ksvm,xt,type="prob")
+  pred=prediction(predksvm,yt,label.ordering=c(1,2))
+  performance(pred,"auc")@y.values[[1]]
+}
+f(1)
+
+for (n in seq(2,12,by=1))
+{
+  i=seq(0.01,2,by=0.01)
+  x=ACM$ind$coord[id,1:n]
+  xt=ACM$ind$coord[-id,1:n]
+  k=Vectorize(f)(i)
+  cout=i[which(k==max(k),arr.ind=TRUE)[1]]
+  cat("\n","nb facteur =",n," AUC test max =",max(k), "cout= ",cout)
+}
+
+```
+
+```{r}
+#Noyau raduak gaussian
+f=function(i,j){
+  ksvm=svm(x,y,kernel="radial",cost=i,gamma=j,probability=TRUE)
+  predksvm=predict(ksvm,xt,probability=TRUE)
+  pred=prediction(predksvm,yt,label.ordering = c(1,2))
+  performance(pred,"auc")@y.values[[1]]
+}
+
+for (n in seq(2,12,by=1)){
+  i=seq(0.05,5,by=0.05)
+  j=seq(0.01,0.5,by=0.05)
+  x=ACM$ind$coord[id,1:n]
+  xt=ACM$ind$coord[-id,1:n]
+  k=outer(i,j,Vectorize(f))
+  cout=i[which(k==max(k),arr.ind=TRUE)[1,1]]
+  gamma=j[which(k==max(k),arr.ind=TRUE)[1,2]]
+  cat("\n","nb facteurs =",n,"AUC test max=",max(k),"cout =",cout," gamma =",gamma)
+}
+
+
+```
+
+##Expression explicite du modele SVM sur composantes factorielles
+
+```{r}
+naxes=6
+x=ACM$ind$coord[id,1:naxes]
+y=credit[id,"Cible"]
+xt=ACM$ind$coord[-id,1:naxes]
+yt=credit[-id,"Cible"]
+#Pas de centrage des variables
+svmlin=svm(x,y,kernel="linear",probability=TRUE,cost=1,scale=F)
+p1=predict(svmlin,newdata=xt,decision.values = T)
+p1=attr(p1,"decision.values")
+pred=prediction(p1,yt,label.ordering = c(1,2))
+performance(pred,"auc")@y.values[[1]]
+
+#Calcul des coefficients w
+w=t(svmlin$coefs) %*% x[svmlin$index,]
+
+#Extraction des coordonnees des variables de l'analyse factorielle
+
+coef=w %*% t(ACM$var$coord[,1:naxes])
+coef
+
+
+```
+
